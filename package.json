@@ -1,10 +1,18 @@
 {
 	"name": "@ivanblagdan/pi-workflows",
-	"version": "0.55.4",
+	"version": "0.1.0",
 	"description": "Typed workflow primitives built on pi-coding-agent sessions with explicit workflow context control",
 	"type": "module",
 	"main": "./dist/lib/index.js",
 	"types": "./dist/lib/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/lib/index.d.ts",
+			"import": "./dist/lib/index.js",
+			"default": "./dist/lib/index.js"
+		},
+		"./package.json": "./package.json"
+	},
 	"files": [
 		"dist",
 		"src",
@@ -18,12 +26,12 @@
 		"dev": "tsgo -p tsconfig.build.json --watch --preserveWatchOutput",
 		"prepublishOnly": "npm run clean && npm run build"
 	},
-	"dependencies": {
-		"@mariozechner/pi-agent-core": "^0.55.4",
-		"@mariozechner/pi-ai": "^0.55.4",
-		"@mariozechner/pi-coding-agent": "^0.55.4",
-		"@mariozechner/pi-tui": "^0.55.4",
-		"@sinclair/typebox": "^0.34.41"
+	"peerDependencies": {
+		"@mariozechner/pi-agent-core": "*",
+		"@mariozechner/pi-ai": "*",
+		"@mariozechner/pi-coding-agent": "*",
+		"@mariozechner/pi-tui": "*",
+		"@sinclair/typebox": "*"
 	},
 	"keywords": [
 		"workflow",
@@ -43,6 +51,9 @@
 	"bugs": {
 		"url": "https://github.com/ivanblagdan/pi-workflows/issues"
 	},
+	"publishConfig": {
+		"access": "public"
+	},
 	"pi": {
 		"extensions": ["./src/index.ts"]
 	},
@@ -50,6 +61,11 @@
 		"node": ">=20.0.0"
 	},
 	"devDependencies": {
+		"@mariozechner/pi-agent-core": "^0.55.4",
+		"@mariozechner/pi-ai": "^0.55.4",
+		"@mariozechner/pi-coding-agent": "^0.55.4",
+		"@mariozechner/pi-tui": "^0.55.4",
+		"@sinclair/typebox": "^0.34.41",
 		"@types/node": "^24.3.0",
 		"@typescript/native-preview": "7.0.0-dev.20260120.1",
 		"shx": "^0.4.0",
