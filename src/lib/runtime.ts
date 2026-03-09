@@ -97,6 +97,14 @@ function eraseToolDefinition<TParams extends TSchema, TDetails>(
 	return tool as unknown as ToolDefinition;
 }
 
+function resolveAgentInstructions(agent: Pick<WorkflowAgentRuntimeConfig<any>, "instructions">, input: string): string {
+	const instructions = agent.instructions(input);
+	if (typeof instructions !== "string") {
+		throw new Error("Workflow agent instructions(input) must return a string.");
+	}
+	return instructions;
+}
+
 function createJsonResultTool<TSchema extends TObject>(options: {
 	schema: TSchema;
 	onAccepted: (output: Static<TSchema>) => void;
@@ -195,7 +203,7 @@ async function runJsonWorkflowAgent<TSchema extends TObject>(
 	});
 	const runtime = await createWorkflowRuntime({
 		cwd: agent.cwd ?? process.cwd(),
-		instructions: agent.instructions,
+		instructions: resolveAgentInstructions(agent, input),
 		outputKind: "json",
 		model: agent.model,
 		thinkingLevel: agent.thinkingLevel,
@@ -245,7 +253,7 @@ async function runArtifactWorkflowAgent(
 	});
 	const runtime = await createWorkflowRuntime({
 		cwd: agent.cwd ?? process.cwd(),
-		instructions: agent.instructions,
+		instructions: resolveAgentInstructions(agent, input),
 		outputKind: "artifact",
 		model: agent.model,
 		thinkingLevel: agent.thinkingLevel,

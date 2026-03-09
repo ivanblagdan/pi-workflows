@@ -88,7 +88,7 @@ export type InferRunResult<TContract extends WorkflowContract> = TContract exten
 export type WorkflowValidator<TResult> = (result: TResult, ctx: WorkflowValidationContext) => void | Promise<void>;
 
 export interface WorkflowAgentRuntimeConfig<TContract extends WorkflowContract> {
-	instructions: string;
+	instructions: (input: string) => string;
 	contract: TContract;
 	model?: Model<any>;
 	thinkingLevel?: ThinkingLevel;

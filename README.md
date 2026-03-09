@@ -96,7 +96,7 @@ const PlanContract = jsonResult(
 );
 
 class PlanAgent extends WorkflowAgent<typeof PlanContract> {
-  instructions = "Create a concise implementation plan.";
+  instructions = (input: string) => `Create a concise implementation plan for: ${input}`;
   contract = PlanContract;
 }
 
@@ -145,7 +145,7 @@ const ContextContract = jsonResult(
 );
 
 class ContextAgent extends WorkflowAgent<typeof ContextContract> {
-  instructions = "Break the task into concrete research questions.";
+  instructions = (input: string) => `Break this task into concrete research questions: ${input}`;
   contract = ContextContract;
   retries = 1;
 }
@@ -180,7 +180,7 @@ import { artifactResult } from "@ivanblagdan/pi-workflows";
 const DraftContract = artifactResult();
 
 class DraftAgent extends WorkflowAgent<typeof DraftContract> {
-  instructions = "Write the final draft to disk and return its path.";
+  instructions = (input: string) => `Write the final draft for this task to disk and return its path: ${input}`;
   contract = DraftContract;
 }
 
@@ -236,7 +236,7 @@ const SummaryContract = jsonResult(
 );
 
 class SummaryAgent extends WorkflowAgent<typeof SummaryContract> {
-  instructions = "Summarize the research findings.";
+  instructions = (_input: string) => "Summarize the research findings.";
   contract = SummaryContract;
 }
 

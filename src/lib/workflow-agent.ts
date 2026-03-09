@@ -10,7 +10,7 @@ export abstract class WorkflowAgent<TContract extends WorkflowContract>
 	extends WorkflowBase<InferRunResult<TContract>>
 	implements WorkflowAgentRuntimeConfig<TContract>
 {
-	abstract instructions: string;
+	abstract instructions: (input: string) => string;
 	abstract contract: TContract;
 
 	model?: Model<any>;

@@ -1,4 +1,4 @@
-import { bashTool, findTool, grepTool, lsTool, readTool } from "@mariozechner/pi-coding-agent";
+import { readOnlyTools, type CreateAgentSessionOptions } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { jsonResult } from "../../lib/contracts.js";
 import { WorkflowAgent } from "../../lib/workflow-agent.js";
@@ -14,11 +14,12 @@ export const PlanContract = jsonResult(
 );
 
 export class PlanAgent extends WorkflowAgent<typeof PlanContract> {
-	instructions = [
-		"Inspect the current project and produce a concise implementation plan.",
-		"Do not modify files.",
-		"Focus on concrete actionable steps grounded in the codebase.",
-	].join(" ");
+	instructions = (input: string) =>
+		[
+			"Inspect the current project and produce a concise implementation plan.",
+			"Do not modify files.",
+			"Focus on concrete actionable steps grounded in the codebase.",
+		].join(" ");
 	contract = PlanContract;
-	tools = [readTool, bashTool, grepTool, findTool, lsTool];
+	tools: CreateAgentSessionOptions["tools"] = readOnlyTools;
 }
