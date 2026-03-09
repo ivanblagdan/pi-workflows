@@ -7,21 +7,21 @@ export { registerWorkflowExtension } from "../extension.js";
 export {
 	ARTIFACT_RESULT_SCHEMA,
 	type ArtifactResultPayload,
-	type ArtifactWorkflowContract,
-	artifactResult,
-	isJsonWorkflowContract,
-	type JsonWorkflowContract,
-	jsonResult,
-	type WorkflowContract,
-} from "./contracts.js";
+	type ArtifactWorkflowOutput,
+	artifactOutput,
+	isJsonWorkflowOutput,
+	type JsonWorkflowOutput,
+	jsonOutput,
+	type WorkflowOutput,
+} from "./outputs.js";
 export { WorkflowValidationError } from "./errors.js";
 export type { WorkflowRegistration } from "./registry.js";
 export { WorkflowRegistry } from "./registry.js";
 export type {
-	ArtifactRunResult,
-	InferRunResult,
+	ArtifactWorkflowResult,
+	InferWorkflowResult,
 	InheritMode,
-	JsonRunResult,
+	JsonWorkflowResult,
 	ResolvedWorkflowEnvironment,
 	WorkflowAgentRuntimeConfig,
 	WorkflowEnvironment,

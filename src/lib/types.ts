@@ -2,7 +2,7 @@ import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 import type { Model } from "@mariozechner/pi-ai";
 import type { CreateAgentSessionOptions, ExtensionFactory } from "@mariozechner/pi-coding-agent";
 import type { Static } from "@sinclair/typebox";
-import type { ArtifactWorkflowContract, JsonWorkflowContract, WorkflowContract } from "./contracts.js";
+import type { ArtifactWorkflowOutput, JsonWorkflowOutput, WorkflowOutput } from "./outputs.js";
 
 export type InheritMode = false | "project" | "user" | "both";
 
@@ -74,34 +74,34 @@ export interface WorkflowInvocation {
 
 export type WorkflowInvoker = (invocation: WorkflowInvocation) => string;
 
-export type JsonRunResult<TOutput> = {
+export type JsonWorkflowResult<TOutput> = {
 	output: TOutput;
 	response: string;
 	outputPath?: never;
 };
 
-export type ArtifactRunResult = {
+export type ArtifactWorkflowResult = {
 	outputPath: string;
 	response: string;
 	output?: never;
 };
 
-export type InferRunResult<TContract extends WorkflowContract> = TContract extends JsonWorkflowContract<infer TSchema>
-	? JsonRunResult<Static<TSchema>>
-	: TContract extends ArtifactWorkflowContract
-		? ArtifactRunResult
+export type InferWorkflowResult<TOutput extends WorkflowOutput> = TOutput extends JsonWorkflowOutput<infer TSchema>
+	? JsonWorkflowResult<Static<TSchema>>
+	: TOutput extends ArtifactWorkflowOutput
+		? ArtifactWorkflowResult
 		: never;
 
 export type WorkflowValidator<TResult> = (result: TResult, ctx: WorkflowValidationContext) => void | Promise<void>;
 
-export interface WorkflowAgentRuntimeConfig<TContract extends WorkflowContract> {
+export interface WorkflowAgentRuntimeConfig<TOutput extends WorkflowOutput> {
 	instructions: (input: string) => string;
-	contract: TContract;
+	output: TOutput;
 	model?: Model<any>;
 	thinkingLevel?: ThinkingLevel;
 	tools?: CreateAgentSessionOptions["tools"];
 	cwd?: string;
 	retries: number;
 	environment: WorkflowEnvironment;
-	getValidators(): readonly WorkflowValidator<InferRunResult<TContract>>[];
+	getValidators(): readonly WorkflowValidator<InferWorkflowResult<TOutput>>[];
 }

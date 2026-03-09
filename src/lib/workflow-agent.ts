@@ -1,17 +1,17 @@
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 import type { Model } from "@mariozechner/pi-ai";
 import type { CreateAgentSessionOptions } from "@mariozechner/pi-coding-agent";
-import type { WorkflowContract } from "./contracts.js";
+import type { WorkflowOutput } from "./outputs.js";
 import { runWorkflowAgent } from "./runtime.js";
-import type { InferRunResult, WorkflowAgentRuntimeConfig, WorkflowEnvironment } from "./types.js";
+import type { InferWorkflowResult, WorkflowAgentRuntimeConfig, WorkflowEnvironment } from "./types.js";
 import { WorkflowBase } from "./workflow-base.js";
 
-export abstract class WorkflowAgent<TContract extends WorkflowContract>
-	extends WorkflowBase<InferRunResult<TContract>>
-	implements WorkflowAgentRuntimeConfig<TContract>
+export abstract class WorkflowAgent<TOutput extends WorkflowOutput>
+	extends WorkflowBase<InferWorkflowResult<TOutput>>
+	implements WorkflowAgentRuntimeConfig<TOutput>
 {
 	abstract instructions: (input: string) => string;
-	abstract contract: TContract;
+	abstract output: TOutput;
 
 	model?: Model<any>;
 	thinkingLevel?: ThinkingLevel;
@@ -25,7 +25,7 @@ export abstract class WorkflowAgent<TContract extends WorkflowContract>
 		themes: { inherit: false },
 	};
 
-	async run(input: string): Promise<InferRunResult<TContract>> {
+	async run(input: string): Promise<InferWorkflowResult<TOutput>> {
 		return runWorkflowAgent(this, input);
 	}
 }

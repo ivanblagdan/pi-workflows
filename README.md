@@ -7,7 +7,7 @@ Typed workflow primitives for pi, plus a loadable pi extension that exposes regi
 `@ivanblagdan/pi-workflows` has two roles:
 
 - **Pi extension**: install or load it in pi to get a `workflow` tool, `/workflow` command, autocomplete, selection UI, and built-in workflows.
-- **TypeScript library**: import `WorkflowAgent`, `Workflow`, contracts, and registry helpers to build your own workflows.
+- **TypeScript library**: import `WorkflowAgent`, `Workflow`, output helpers, and registry helpers to build your own workflows.
 
 ## Installation
 
@@ -81,13 +81,13 @@ import {
   WorkflowAgent,
   WorkflowRegistry,
   registerWorkflowExtension,
-  type InferRunResult,
+  type InferWorkflowResult,
   type WorkflowInvoker,
-  jsonResult,
+  jsonOutput,
 } from "@ivanblagdan/pi-workflows";
 import { Type } from "@sinclair/typebox";
 
-const PlanContract = jsonResult(
+const PlanOutput = jsonOutput(
   Type.Object(
     {
       plan: Type.Array(Type.String({ minLength: 1 }), { minItems: 1 }),
@@ -96,12 +96,12 @@ const PlanContract = jsonResult(
   ),
 );
 
-class PlanAgent extends WorkflowAgent<typeof PlanContract> {
+class PlanAgent extends WorkflowAgent<typeof PlanOutput> {
   instructions = (input: string) => `Create a concise implementation plan for: ${input}`;
-  contract = PlanContract;
+  output = PlanOutput;
 }
 
-class PlanWorkflow extends Workflow<InferRunResult<typeof PlanContract>> {
+class PlanWorkflow extends Workflow<InferWorkflowResult<typeof PlanOutput>> {
   invoke: WorkflowInvoker = ({ name, input }) =>
     [
       `Call the workflow tool exactly once for "${name}".`,
@@ -135,9 +135,9 @@ export default function workflowExtension(pi: ExtensionAPI): void {
 
 ```ts
 import { Type } from "@sinclair/typebox";
-import { WorkflowAgent, jsonResult } from "@ivanblagdan/pi-workflows";
+import { WorkflowAgent, jsonOutput } from "@ivanblagdan/pi-workflows";
 
-const ContextContract = jsonResult(
+const ContextOutput = jsonOutput(
   Type.Object(
     {
       questions: Type.Array(
@@ -155,23 +155,23 @@ const ContextContract = jsonResult(
   ),
 );
 
-class ContextAgent extends WorkflowAgent<typeof ContextContract> {
+class ContextAgent extends WorkflowAgent<typeof ContextOutput> {
   instructions = (input: string) => `Break this task into concrete research questions: ${input}`;
-  contract = ContextContract;
+  output = ContextOutput;
   retries = 1;
 }
 
-const result = await new ContextAgent().run("How should workflows handle typed contracts?");
+const result = await new ContextAgent().run("How should workflows handle typed outputs?");
 console.log(result.output.questions);
 console.log(result.response);
 ```
 
-### Contracts
+### Outputs
 
 #### JSON output
 
 ```ts
-const SummaryContract = jsonResult(
+const SummaryOutput = jsonOutput(
   Type.Object(
     {
       summary: Type.String({ minLength: 1 }),
@@ -186,20 +186,20 @@ The `workflow_result` tool uses the exact TypeBox schema as its parameters. Nati
 #### Artifact output
 
 ```ts
-import { artifactResult } from "@ivanblagdan/pi-workflows";
+import { artifactOutput } from "@ivanblagdan/pi-workflows";
 
-const DraftContract = artifactResult();
+const DraftOutput = artifactOutput();
 
-class DraftAgent extends WorkflowAgent<typeof DraftContract> {
+class DraftAgent extends WorkflowAgent<typeof DraftOutput> {
   instructions = (input: string) => `Write the final draft for this task to disk and return its path: ${input}`;
-  contract = DraftContract;
+  output = DraftOutput;
 }
 
 const draft = await new DraftAgent().run("Write the report");
 console.log(draft.outputPath); // absolute path
 ```
 
-Artifact workflows use the fixed contract:
+Artifact workflows use the fixed output schema:
 
 ```ts
 { path: string }
@@ -234,12 +234,12 @@ Use `Workflow` to package that composition into a reusable higher-level workflow
 import {
   Workflow,
   WorkflowAgent,
-  type InferRunResult,
-  jsonResult,
+  type InferWorkflowResult,
+  jsonOutput,
 } from "@ivanblagdan/pi-workflows";
 import { Type } from "@sinclair/typebox";
 
-const SummaryContract = jsonResult(
+const SummaryOutput = jsonOutput(
   Type.Object(
     {
       summary: Type.String({ minLength: 1 }),
@@ -248,13 +248,13 @@ const SummaryContract = jsonResult(
   ),
 );
 
-class SummaryAgent extends WorkflowAgent<typeof SummaryContract> {
+class SummaryAgent extends WorkflowAgent<typeof SummaryOutput> {
   instructions = (_input: string) => "Summarize the research findings.";
-  contract = SummaryContract;
+  output = SummaryOutput;
 }
 
-class ResearchWorkflow extends Workflow<InferRunResult<typeof SummaryContract>> {
-  protected async runWorkflow(input: string): Promise<InferRunResult<typeof SummaryContract>> {
+class ResearchWorkflow extends Workflow<InferWorkflowResult<typeof SummaryOutput>> {
+  protected async runWorkflow(input: string): Promise<InferWorkflowResult<typeof SummaryOutput>> {
     const context = await new ContextAgent().run(input);
     const answers = await Promise.all(
       context.output.questions.map((question) => new ResearchAgent().run(question.question)),
@@ -278,8 +278,8 @@ class ResearchWorkflow extends Workflow<InferRunResult<typeof SummaryContract>> 
 2. built-in validation passes
 3. custom validators pass
 
-For JSON contracts, built-in validation is simply successful tool submission.
-For artifact contracts, built-in validation also checks that the file exists.
+For JSON outputs, built-in validation is simply successful tool submission.
+For artifact outputs, built-in validation also checks that the file exists.
 
 Add semantic validators with `.validate()`:
 

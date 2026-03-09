@@ -8,9 +8,9 @@ import {
 	type ToolDefinition,
 } from "@mariozechner/pi-coding-agent";
 import type { Static, TObject, TSchema } from "@sinclair/typebox";
-import { type ArtifactWorkflowContract, isJsonWorkflowContract, type JsonWorkflowContract } from "./contracts.js";
+import { type ArtifactWorkflowOutput, isJsonWorkflowOutput, type JsonWorkflowOutput } from "./outputs.js";
 import { createWorkflowRuntimeEnvironment } from "./environment.js";
-import type { InferRunResult, WorkflowAgentRuntimeConfig, WorkflowValidationContext } from "./types.js";
+import type { InferWorkflowResult, WorkflowAgentRuntimeConfig, WorkflowValidationContext } from "./types.js";
 import { createWorkflowValidationContext, normalizeWorkflowValidationError } from "./workflow-base.js";
 
 interface WorkflowLoopState {
@@ -127,9 +127,9 @@ function createJsonResultTool<TSchema extends TObject>(options: {
 }
 
 function createArtifactResultTool(options: {
-	schema: ArtifactWorkflowContract["schema"];
+	schema: ArtifactWorkflowOutput["schema"];
 	onAccepted: (path: string) => void;
-}): ToolDefinition<ArtifactWorkflowContract["schema"]> {
+}): ToolDefinition<ArtifactWorkflowOutput["schema"]> {
 	return {
 		name: "workflow_result",
 		label: "Workflow Result",
@@ -191,12 +191,12 @@ async function createWorkflowRuntime<TParams extends TSchema>(options: {
 }
 
 async function runJsonWorkflowAgent<TSchema extends TObject>(
-	agent: WorkflowAgentRuntimeConfig<JsonWorkflowContract<TSchema>>,
+	agent: WorkflowAgentRuntimeConfig<JsonWorkflowOutput<TSchema>>,
 	input: string,
-): Promise<InferRunResult<JsonWorkflowContract<TSchema>>> {
+): Promise<InferWorkflowResult<JsonWorkflowOutput<TSchema>>> {
 	let acceptedOutput: Static<TSchema> | undefined;
 	const workflowTool = createJsonResultTool({
-		schema: agent.contract.schema,
+		schema: agent.output.schema,
 		onAccepted: (output) => {
 			acceptedOutput = output;
 		},
@@ -225,7 +225,7 @@ async function runJsonWorkflowAgent<TSchema extends TObject>(
 				if (acceptedOutput === undefined) {
 					throw new Error("workflow_result was not called successfully before the agent stopped.");
 				}
-				const result: InferRunResult<JsonWorkflowContract<TSchema>> = {
+				const result: InferWorkflowResult<JsonWorkflowOutput<TSchema>> = {
 					output: acceptedOutput,
 					response,
 				};
@@ -241,12 +241,12 @@ async function runJsonWorkflowAgent<TSchema extends TObject>(
 }
 
 async function runArtifactWorkflowAgent(
-	agent: WorkflowAgentRuntimeConfig<ArtifactWorkflowContract>,
+	agent: WorkflowAgentRuntimeConfig<ArtifactWorkflowOutput>,
 	input: string,
-): Promise<InferRunResult<ArtifactWorkflowContract>> {
+): Promise<InferWorkflowResult<ArtifactWorkflowOutput>> {
 	let acceptedOutputPath: string | undefined;
 	const workflowTool = createArtifactResultTool({
-		schema: agent.contract.schema,
+		schema: agent.output.schema,
 		onAccepted: (path) => {
 			acceptedOutputPath = path;
 		},
@@ -282,7 +282,7 @@ async function runArtifactWorkflowAgent(
 				if (!statSync(absoluteOutputPath).isFile()) {
 					throw new Error(`Artifact path is not a file: ${absoluteOutputPath}`);
 				}
-				const result: InferRunResult<ArtifactWorkflowContract> = {
+				const result: InferWorkflowResult<ArtifactWorkflowOutput> = {
 					outputPath: absoluteOutputPath,
 					response,
 				};
@@ -297,17 +297,17 @@ async function runArtifactWorkflowAgent(
 	}
 }
 
-export async function runWorkflowAgent<TContract extends JsonWorkflowContract<TObject> | ArtifactWorkflowContract>(
-	agent: WorkflowAgentRuntimeConfig<TContract>,
+export async function runWorkflowAgent<TOutput extends JsonWorkflowOutput<TObject> | ArtifactWorkflowOutput>(
+	agent: WorkflowAgentRuntimeConfig<TOutput>,
 	input: string,
-): Promise<InferRunResult<TContract>> {
-	if (isJsonWorkflowContract(agent.contract)) {
+): Promise<InferWorkflowResult<TOutput>> {
+	if (isJsonWorkflowOutput(agent.output)) {
 		return runJsonWorkflowAgent(
-			agent as unknown as WorkflowAgentRuntimeConfig<JsonWorkflowContract<TObject>>,
+			agent as unknown as WorkflowAgentRuntimeConfig<JsonWorkflowOutput<TObject>>,
 			input,
-		) as Promise<InferRunResult<TContract>>;
+		) as Promise<InferWorkflowResult<TOutput>>;
 	}
-	return runArtifactWorkflowAgent(agent as WorkflowAgentRuntimeConfig<ArtifactWorkflowContract>, input) as Promise<
-		InferRunResult<TContract>
+	return runArtifactWorkflowAgent(agent as WorkflowAgentRuntimeConfig<ArtifactWorkflowOutput>, input) as Promise<
+		InferWorkflowResult<TOutput>
 	>;
 }
