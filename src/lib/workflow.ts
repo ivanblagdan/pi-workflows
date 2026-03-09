@@ -1,7 +1,8 @@
+import type { WorkflowInvoker } from "./types.js";
 import { WorkflowBase } from "./workflow-base.js";
 
 export abstract class Workflow<TResult> extends WorkflowBase<TResult> {
-	invoke = ({ name, input }: { name: string; input: string }): string => {
+	invoke: WorkflowInvoker = ({ name, input }) => {
 		const parameters = JSON.stringify({ name, input }, null, 2);
 		return [
 			"Call the workflow tool exactly once with these exact parameters:",

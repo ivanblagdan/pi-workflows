@@ -2,6 +2,7 @@ import type { ExtensionAPI, ExtensionCommandContext, ToolDefinition } from "@mar
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import type { WorkflowRegistry } from "./lib/registry.js";
+import type { WorkflowInvocation } from "./lib/types.js";
 
 const WORKFLOW_TOOL_PARAMS = Type.Object(
 	{
@@ -156,7 +157,7 @@ async function resolveWorkflowInvocation(
 	ctx: ExtensionCommandContext,
 	registry: WorkflowRegistry,
 	args: string,
-): Promise<{ name: string; input: string } | undefined> {
+): Promise<WorkflowInvocation | undefined> {
 	const workflows = registry.list();
 	if (workflows.length === 0) {
 		const message = "No workflows are registered.";

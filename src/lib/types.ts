@@ -67,6 +67,13 @@ export interface WorkflowValidationContext {
 	retriesRemaining: number;
 }
 
+export interface WorkflowInvocation {
+	name: string;
+	input: string;
+}
+
+export type WorkflowInvoker = (invocation: WorkflowInvocation) => string;
+
 export type JsonRunResult<TOutput> = {
 	output: TOutput;
 	response: string;

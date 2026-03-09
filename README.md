@@ -82,6 +82,7 @@ import {
   WorkflowRegistry,
   registerWorkflowExtension,
   type InferRunResult,
+  type WorkflowInvoker,
   jsonResult,
 } from "@ivanblagdan/pi-workflows";
 import { Type } from "@sinclair/typebox";
@@ -101,7 +102,7 @@ class PlanAgent extends WorkflowAgent<typeof PlanContract> {
 }
 
 class PlanWorkflow extends Workflow<InferRunResult<typeof PlanContract>> {
-  invoke = ({ name, input }: { name: string; input: string }) =>
+  invoke: WorkflowInvoker = ({ name, input }) =>
     [
       `Call the workflow tool exactly once for "${name}".`,
       "",
@@ -227,7 +228,7 @@ const summary = await new SummaryAgent().run(
 
 Use `Workflow` to package that composition into a reusable higher-level workflow.
 
-`Workflow` also exposes an `invoke({ name, input }) => string` callback used by the `/workflow` command. Override it when a workflow needs a custom command-time invocation prompt.
+`Workflow` also exposes an `invoke({ name, input }) => string` callback used by the `/workflow` command. Override it when a workflow needs a custom command-time invocation prompt. The `WorkflowInvocation` and `WorkflowInvoker` types are exported for reuse.
 
 ```ts
 import {

@@ -25,6 +25,8 @@ export type {
 	ResolvedWorkflowEnvironment,
 	WorkflowAgentRuntimeConfig,
 	WorkflowEnvironment,
+	WorkflowInvocation,
+	WorkflowInvoker,
 	WorkflowValidationContext,
 	WorkflowValidator,
 } from "./types.js";
