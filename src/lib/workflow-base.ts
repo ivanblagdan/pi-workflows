@@ -33,7 +33,7 @@ export function normalizeWorkflowValidationError(
 
 export abstract class WorkflowBase<TResult> {
 	cwd?: string;
-	retries = 0;
+	retries = 1;
 
 	private readonly validators: Array<WorkflowValidator<TResult>> = [];
 
