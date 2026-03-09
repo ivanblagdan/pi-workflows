@@ -101,20 +101,6 @@ function formatResultPreview(result: unknown): string {
 	return formatPreview(safeStringify(result), 120);
 }
 
-function buildWorkflowInvocationPrompt(name: string, input: string): string {
-	const parameters = JSON.stringify({ name, input }, null, 2);
-	return [
-		"Call the workflow tool exactly once with these exact parameters:",
-		"",
-		"```json",
-		parameters,
-		"```",
-		"",
-		"Do not change the parameters.",
-		"After the tool returns, use its result in your response.",
-	].join("\n");
-}
-
 function parseCommandArgs(args: string): { workflowName?: string; input: string; hasInput: boolean } {
 	const trimmed = args.trim();
 	if (trimmed.length === 0) {
@@ -373,7 +359,18 @@ export function registerWorkflowExtension(pi: ExtensionAPI, registry: WorkflowRe
 			if (!invocation) {
 				return;
 			}
-			pi.sendUserMessage(buildWorkflowInvocationPrompt(invocation.name, invocation.input), {
+
+			const workflow = registry.get(invocation.name);
+			if (!workflow) {
+				throw new Error(`Workflow disappeared before invocation: ${invocation.name}`);
+			}
+
+			const instance = workflow.create();
+			if (instance.cwd === undefined) {
+				instance.cwd = ctx.cwd;
+			}
+
+			pi.sendUserMessage(instance.invoke({ name: invocation.name, input: invocation.input }), {
 				deliverAs: "followUp",
 			});
 		},
