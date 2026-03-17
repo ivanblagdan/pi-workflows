@@ -209,13 +209,18 @@ After a successful `workflow_result` call, the runtime checks that the file exis
 
 ### Composition with `Workflow`
 
-Sequence and parallelism use plain promises.
+Sequence and parallelism use plain promises. For bounded parallelism, combine `Promise.all()` with `p-limit`.
 
 ```ts
+import pLimit from "p-limit";
+
+const limit = pLimit(3);
 const context = await new ContextAgent().run(task);
 
 const answers = await Promise.all(
-  context.output.questions.map((question) => new ResearchAgent().run(question.question)),
+  context.output.questions.map((question) =>
+    limit(() => new ResearchAgent().run(question.question)),
+  ),
 );
 
 const summary = await new SummaryAgent().run(
@@ -231,6 +236,7 @@ Use `Workflow` to package that composition into a reusable higher-level workflow
 `Workflow` also exposes an `invoke({ name, input }) => string` callback used by the `/workflow` command. Override it when a workflow needs a custom command-time invocation prompt. The `WorkflowInvocation` and `WorkflowInvoker` types are exported for reuse.
 
 ```ts
+import pLimit from "p-limit";
 import {
   Workflow,
   WorkflowAgent,
@@ -255,9 +261,12 @@ class SummaryAgent extends WorkflowAgent<typeof SummaryOutput> {
 
 class ResearchWorkflow extends Workflow<InferWorkflowResult<typeof SummaryOutput>> {
   protected async runWorkflow(input: string): Promise<InferWorkflowResult<typeof SummaryOutput>> {
+    const limit = pLimit(3);
     const context = await new ContextAgent().run(input);
     const answers = await Promise.all(
-      context.output.questions.map((question) => new ResearchAgent().run(question.question)),
+      context.output.questions.map((question) =>
+        limit(() => new ResearchAgent().run(question.question)),
+      ),
     );
 
     return new SummaryAgent().run(
