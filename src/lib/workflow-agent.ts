@@ -1,6 +1,7 @@
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 import type { Model } from "@mariozechner/pi-ai";
 import type { CreateAgentSessionOptions } from "@mariozechner/pi-coding-agent";
+import { throwIfWorkflowAborted } from "./execution.js";
 import { withWorkflowFeedbackScope } from "./feedback.js";
 import type { WorkflowOutput } from "./outputs.js";
 import { runWorkflowAgent } from "./runtime.js";
@@ -27,6 +28,7 @@ export abstract class WorkflowAgent<TOutput extends WorkflowOutput>
 	};
 
 	async run(input: string): Promise<InferWorkflowResult<TOutput>> {
+		throwIfWorkflowAborted();
 		return withWorkflowFeedbackScope("agent", this.getFeedbackLabel(), () => runWorkflowAgent(this, input));
 	}
 }

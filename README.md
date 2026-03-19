@@ -40,7 +40,7 @@ When loaded, it registers:
 - workflow-name autocomplete for `/workflow`
 - workflow selection UI when `/workflow` is run without a name
 
-The `/workflow` command is a one-shot enrichment command. It preserves the user's original request, then runs the selected workflow during `before_agent_start` and injects the workflow's `buildTurnEnrichment(...)` output as extension-provided context before the main agent responds.
+The `/workflow` command is a one-shot enrichment command. It preserves the user's original request, runs the selected workflow as a preflight step, then injects the workflow's `buildTurnEnrichment(...)` output during `before_agent_start` before the main agent responds. In interactive mode, press `Esc` while preflight is running to cancel and restore the original request to the editor.
 
 Example:
 
@@ -287,12 +287,14 @@ const combined = docList(answers, (answer) =>
 
 ### Feedback primitives
 
-Workflow feedback is separate from turn enrichment. Use `runWithWorkflowFeedback(...)` to capture structured workflow events, and use `step(...)`, `update(...)`, `note(...)`, and `artifact(...)` inside workflows or agents to emit semantic progress without wiring UI logic into the workflow itself. Workflow and agent runs emit lifecycle events automatically, and nested `WorkflowAgent` runs also emit tool execution scopes automatically.
+Workflow feedback is separate from turn enrichment. Use `runWithWorkflowExecution(...)` to propagate cancellation and `runWithWorkflowFeedback(...)` to capture structured workflow events. Then use `step(...)`, `update(...)`, `note(...)`, and `artifact(...)` inside workflows or agents to emit semantic progress without wiring UI logic into the workflow itself. Workflow and agent runs emit lifecycle events automatically, and nested `WorkflowAgent` runs also emit tool execution scopes automatically.
 
 ```ts
 import {
   Workflow,
+  WorkflowAbortError,
   WorkflowFeedbackSink,
+  runWithWorkflowExecution,
   runWithWorkflowFeedback,
 } from "@ivanblagdan/pi-workflows";
 
@@ -302,9 +304,21 @@ const sink: WorkflowFeedbackSink = {
   },
 };
 
-await runWithWorkflowFeedback(sink, () =>
-  new ResearchWorkflow().run("Investigate the auth refactor"),
-);
+const controller = new AbortController();
+
+try {
+  await runWithWorkflowExecution({ signal: controller.signal }, () =>
+    runWithWorkflowFeedback(sink, () =>
+      new ResearchWorkflow().run("Investigate the auth refactor"),
+    ),
+  );
+} catch (error) {
+  if (error instanceof WorkflowAbortError) {
+    console.log("Workflow canceled");
+  } else {
+    throw error;
+  }
+}
 ```
 
 ```ts

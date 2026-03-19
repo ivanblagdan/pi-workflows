@@ -8,6 +8,11 @@ import {
 	type ToolDefinition,
 } from "@mariozechner/pi-coding-agent";
 import type { Static, TObject, TSchema } from "@sinclair/typebox";
+import {
+	getCurrentWorkflowAbortSignal,
+	isWorkflowAbortError,
+	throwIfWorkflowAborted,
+} from "./execution.js";
 import { emitWorkflowFeedback, getCurrentWorkflowFeedbackScopeId } from "./feedback.js";
 import { type ArtifactWorkflowOutput, isJsonWorkflowOutput, type JsonWorkflowOutput } from "./outputs.js";
 import { createWorkflowRuntimeEnvironment } from "./environment.js";
@@ -28,6 +33,7 @@ interface WorkflowAgentRuntime {
 	session: AgentSession;
 	prompt: (input: string) => Promise<void>;
 	waitForIdle: () => Promise<void>;
+	dispose: () => void;
 }
 
 function safeStringify(value: unknown): string {
@@ -160,14 +166,20 @@ async function runWorkflowLoop<TResult>(options: {
 	let attempt = 1;
 	let retriesRemaining = options.retries;
 
+	throwIfWorkflowAborted();
 	await options.runtime.waitForIdle();
+	throwIfWorkflowAborted();
 	await options.runtime.prompt(options.input);
 
 	while (true) {
+		throwIfWorkflowAborted();
 		const context = createWorkflowValidationContext(options.cwd, options.input, attempt, retriesRemaining);
 		try {
 			return await options.validate(context, options.state.lastResponse);
 		} catch (error) {
+			if (isWorkflowAbortError(error)) {
+				throw error;
+			}
 			const validationError = normalizeWorkflowValidationError(error, attempt, options.retries);
 			if (retriesRemaining <= 0) {
 				throw validationError;
@@ -182,7 +194,9 @@ async function runWorkflowLoop<TResult>(options: {
 			});
 			retriesRemaining--;
 			attempt++;
+			throwIfWorkflowAborted();
 			await options.runtime.waitForIdle();
+			throwIfWorkflowAborted();
 			await options.runtime.prompt(buildRepairPrompt(validationError));
 		}
 	}
@@ -309,12 +323,14 @@ async function createWorkflowRuntime<TParams extends TSchema>(options: {
 	workflowTool: ToolDefinition<TParams>;
 	environment: WorkflowAgentRuntimeConfig<any>["environment"];
 }): Promise<WorkflowAgentRuntime> {
+	throwIfWorkflowAborted();
 	const runtimeEnvironment = await createWorkflowRuntimeEnvironment({
 		cwd: options.cwd,
 		instructions: options.instructions,
 		outputKind: options.outputKind,
 		environment: options.environment,
 	});
+	throwIfWorkflowAborted();
 	const { session, modelFallbackMessage } = await createAgentSession({
 		cwd: runtimeEnvironment.cwd,
 		model: options.model,
@@ -330,14 +346,49 @@ async function createWorkflowRuntime<TParams extends TSchema>(options: {
 		throw new Error(modelFallbackMessage ?? "No model selected for workflow execution.");
 	}
 
+	const abortSignal = getCurrentWorkflowAbortSignal();
+	const abortSession = () => {
+		void session.abort().catch(() => {});
+	};
+	if (abortSignal?.aborted) {
+		abortSession();
+		throwIfWorkflowAborted(abortSignal);
+	}
+	if (abortSignal) {
+		abortSignal.addEventListener("abort", abortSession, { once: true });
+	}
+
 	return {
 		cwd: runtimeEnvironment.cwd,
 		session,
 		prompt: async (input: string) => {
-			await session.prompt(input, { expandPromptTemplates: false });
+			throwIfWorkflowAborted(abortSignal);
+			try {
+				await session.prompt(input, { expandPromptTemplates: false });
+			} catch (error) {
+				if (abortSignal?.aborted) {
+					throwIfWorkflowAborted(abortSignal);
+				}
+				throw error;
+			}
+			throwIfWorkflowAborted(abortSignal);
 		},
 		waitForIdle: async () => {
-			await session.agent.waitForIdle();
+			throwIfWorkflowAborted(abortSignal);
+			try {
+				await session.agent.waitForIdle();
+			} catch (error) {
+				if (abortSignal?.aborted) {
+					throwIfWorkflowAborted(abortSignal);
+				}
+				throw error;
+			}
+			throwIfWorkflowAborted(abortSignal);
+		},
+		dispose: () => {
+			if (abortSignal) {
+				abortSignal.removeEventListener("abort", abortSession);
+			}
 		},
 	};
 }
@@ -389,6 +440,7 @@ async function runJsonWorkflowAgent<TSchema extends TObject>(
 		});
 	} finally {
 		unsubscribe();
+		runtime.dispose();
 	}
 }
 
@@ -446,6 +498,7 @@ async function runArtifactWorkflowAgent(
 		});
 	} finally {
 		unsubscribe();
+		runtime.dispose();
 	}
 }
 

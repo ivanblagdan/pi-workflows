@@ -23,6 +23,13 @@ export {
 	type WorkflowOutput,
 } from "./outputs.js";
 export {
+	runWithWorkflowExecution,
+	getCurrentWorkflowAbortSignal,
+	isWorkflowAbortError,
+	throwIfWorkflowAborted,
+	type WorkflowExecutionContext,
+} from "./execution.js";
+export {
 	emitWorkflowFeedback,
 	getCurrentWorkflowFeedbackScopeId,
 	runWithWorkflowFeedback,
@@ -40,7 +47,7 @@ export {
 	type WorkflowFeedbackUpdateEvent,
 	withWorkflowFeedbackScope,
 } from "./feedback.js";
-export { WorkflowValidationError } from "./errors.js";
+export { WorkflowAbortError, WorkflowValidationError } from "./errors.js";
 export type { WorkflowRegistration } from "./registry.js";
 export { WorkflowRegistry } from "./registry.js";
 export type {

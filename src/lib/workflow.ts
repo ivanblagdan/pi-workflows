@@ -1,3 +1,4 @@
+import { throwIfWorkflowAborted, isWorkflowAbortError } from "./execution.js";
 import { withWorkflowFeedbackScope } from "./feedback.js";
 import type { WorkflowInvoker, WorkflowTurnEnrichment, WorkflowTurnEnrichmentContext } from "./types.js";
 import { WorkflowBase } from "./workflow-base.js";
@@ -102,11 +103,15 @@ export abstract class Workflow<TResult> extends WorkflowBase<TResult> {
 			let retriesRemaining = this.retries;
 
 			while (true) {
+				throwIfWorkflowAborted();
 				try {
 					const result = await this.runWorkflow(input);
 					await this.validateResult(result, input, attempt, retriesRemaining);
 					return result;
 				} catch (error) {
+					if (isWorkflowAbortError(error)) {
+						throw error;
+					}
 					const workflowError = this.normalizeValidationError(error, attempt);
 					if (retriesRemaining <= 0) {
 						throw workflowError;

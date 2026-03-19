@@ -1,8 +1,10 @@
 import type { ExtensionAPI, ExtensionCommandContext, ToolDefinition } from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
+import { isKeyRelease, matchesKey, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { createWorkflowFeedbackController } from "./extension-feedback.js";
+import { createWorkflowFeedbackController, type WorkflowFeedbackController } from "./extension-feedback.js";
+import { isWorkflowAbortError, runWithWorkflowExecution } from "./lib/execution.js";
 import { runWithWorkflowFeedback } from "./lib/feedback.js";
+import { WorkflowAbortError } from "./lib/errors.js";
 import type { WorkflowRegistry } from "./lib/registry.js";
 import type { WorkflowInvocation, WorkflowTurnEnrichment } from "./lib/types.js";
 import type { Workflow } from "./lib/workflow.js";
@@ -37,6 +39,21 @@ export interface WorkflowToolErrorDetails {
 
 export type WorkflowToolDetails<TResult = unknown> = WorkflowToolSuccessDetails<TResult> | WorkflowToolErrorDetails;
 
+interface PreparedWorkflowEnrichment {
+	invocation: WorkflowInvocation;
+	instance: Workflow<unknown>;
+	result: unknown;
+	durationMs: number;
+}
+
+interface ActiveWorkflowPreflight {
+	invocation: WorkflowInvocation;
+	abortController: AbortController;
+	feedbackController: WorkflowFeedbackController;
+	detachTerminalInput: () => void;
+	state: "running" | "cancelling";
+}
+
 function safeStringify(value: unknown): string {
 	if (typeof value === "string") {
 		return value;
@@ -62,6 +79,10 @@ function formatDuration(durationMs: number): string {
 		return `${durationMs}ms`;
 	}
 	return `${(durationMs / 1000).toFixed(1)}s`;
+}
+
+function isEscapeTerminalInput(data: string): boolean {
+	return matchesKey(data, "escape") && !isKeyRelease(data);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -148,6 +169,7 @@ function sendWorkflowPreviewMessage(pi: ExtensionAPI, invocation: WorkflowInvoca
 				`[WORKFLOW PREVIEW: ${invocation.name}]`,
 				"",
 				"Preparing workflow context before the main agent responds.",
+				"Press Esc to cancel while preparation is running.",
 				"",
 				"Request:",
 				invocation.input,
@@ -269,6 +291,7 @@ function registerWorkflowMessageRenderers(pi: ExtensionAPI): void {
 		const text = [
 			header,
 			theme.fg("muted", "Preparing workflow context before the main agent responds."),
+			theme.fg("dim", "Press Esc to cancel while preparation is running."),
 			"",
 			theme.fg("muted", "Request:"),
 			theme.fg("toolOutput", input || "(empty input)"),
@@ -542,7 +565,8 @@ function createWorkflowTool(
 }
 
 export function registerWorkflowExtension(pi: ExtensionAPI, registry: WorkflowRegistry): void {
-	let pendingEnrichment: WorkflowInvocation | undefined;
+	let preparedEnrichment: PreparedWorkflowEnrichment | undefined;
+	let activePreflight: ActiveWorkflowPreflight | undefined;
 
 	pi.registerTool(createWorkflowTool(registry));
 	registerWorkflowMessageRenderers(pi);
@@ -555,53 +579,35 @@ export function registerWorkflowExtension(pi: ExtensionAPI, registry: WorkflowRe
 		return { messages: filteredMessages };
 	});
 
-	pi.on("before_agent_start", async (event, ctx) => {
-		if (!pendingEnrichment) {
+	pi.on("before_agent_start", async (event) => {
+		if (!preparedEnrichment) {
 			return undefined;
 		}
 
-		const invocation = pendingEnrichment;
-		pendingEnrichment = undefined;
-
-		const workflow = registry.get(invocation.name);
-		if (!workflow) {
-			throw new Error(`Workflow disappeared before enrichment: ${invocation.name}`);
+		const prepared = preparedEnrichment;
+		preparedEnrichment = undefined;
+		if (event.prompt !== prepared.invocation.input) {
+			throw new Error(`Prepared workflow enrichment for "${prepared.invocation.name}" got out of sync with the next turn.`);
 		}
 
-		ctx.ui.setWorkingMessage(`Running workflow "${workflow.name}"...`);
-		const startedAt = Date.now();
-		const feedbackController = createWorkflowFeedbackController({ ui: ctx.ui });
-
-		try {
-			const { instance, result } = await runWithWorkflowFeedback(feedbackController.sink, () =>
-				executeWorkflow(workflow, invocation.input, ctx.cwd),
-			);
-			const enrichment = await instance.buildTurnEnrichment({
-				name: workflow.name,
-				input: invocation.input,
-				result,
-				cwd: ctx.cwd,
-				currentSystemPrompt: event.systemPrompt,
-			});
-			if (enrichment?.message) {
-				enrichment.message = {
-					...enrichment.message,
-					details: mergeWorkflowMessageDetails(enrichment.message.details, {
-						workflow: workflow.name,
-						input: invocation.input,
-						durationMs: Date.now() - startedAt,
-					}),
-				};
-			}
-			return normalizeTurnEnrichment(enrichment);
-		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : String(error);
-			ctx.ui.notify(`Workflow "${workflow.name}" enrichment failed: ${errorMessage}`, "error");
-			throw error instanceof Error ? error : new Error(errorMessage);
-		} finally {
-			feedbackController.dispose();
-			ctx.ui.setWorkingMessage();
+		const enrichment = await prepared.instance.buildTurnEnrichment({
+			name: prepared.invocation.name,
+			input: prepared.invocation.input,
+			result: prepared.result,
+			cwd: prepared.instance.cwd ?? process.cwd(),
+			currentSystemPrompt: event.systemPrompt,
+		});
+		if (enrichment?.message) {
+			enrichment.message = {
+				...enrichment.message,
+				details: mergeWorkflowMessageDetails(enrichment.message.details, {
+					workflow: prepared.invocation.name,
+					input: prepared.invocation.input,
+					durationMs: prepared.durationMs,
+				}),
+			};
 		}
+		return normalizeTurnEnrichment(enrichment);
 	});
 
 	pi.registerCommand("workflow", {
@@ -630,23 +636,91 @@ export function registerWorkflowExtension(pi: ExtensionAPI, registry: WorkflowRe
 				return;
 			}
 
-			if (!ctx.isIdle() || ctx.hasPendingMessages() || pendingEnrichment) {
+			if (!ctx.isIdle() || ctx.hasPendingMessages() || preparedEnrichment || activePreflight) {
 				notifyCommandMessage(
 					pi,
 					ctx,
-					'Cannot start workflow enrichment while the agent is busy or another message is queued. Wait for the current turn to finish and try again.',
+					"Cannot start workflow preparation while the agent is busy, another workflow is already preparing, or a message is queued. Wait for the current work to finish and try again.",
 					"error",
 				);
 				return;
 			}
 
+			const workflow = registry.get(invocation.name);
+			if (!workflow) {
+				throw new Error(`Workflow disappeared before invocation: ${invocation.name}`);
+			}
+
 			sendWorkflowPreviewMessage(pi, invocation);
-			pendingEnrichment = invocation;
+			const feedbackController = createWorkflowFeedbackController({ ui: ctx.ui });
+			const abortController = new AbortController();
+			const preflight: ActiveWorkflowPreflight = {
+				invocation,
+				abortController,
+				feedbackController,
+				detachTerminalInput: () => {},
+				state: "running",
+			};
+			const startedAt = Date.now();
+			const cancelPreflight = () => {
+				if (activePreflight !== preflight || preflight.state === "cancelling") {
+					return;
+				}
+				preflight.state = "cancelling";
+				abortController.abort(new WorkflowAbortError(`Canceled workflow "${workflow.name}".`));
+				feedbackController.dispose();
+				ctx.ui.setEditorText(invocation.input);
+				ctx.ui.notify(`Canceled workflow "${workflow.name}".`, "info");
+			};
+			if (ctx.hasUI) {
+				preflight.detachTerminalInput = ctx.ui.onTerminalInput((data) => {
+					if (!isEscapeTerminalInput(data)) {
+						return undefined;
+					}
+					cancelPreflight();
+					return { consume: true };
+				});
+			}
+
+			activePreflight = preflight;
 			try {
-				pi.sendUserMessage(invocation.input);
+				const { instance, result } = await runWithWorkflowExecution({ signal: abortController.signal }, () =>
+					runWithWorkflowFeedback(feedbackController.sink, () => executeWorkflow(workflow, invocation.input, ctx.cwd)),
+				);
+				preflight.detachTerminalInput();
+				feedbackController.dispose();
+				if (activePreflight === preflight) {
+					activePreflight = undefined;
+				}
+				preparedEnrichment = {
+					invocation,
+					instance,
+					result,
+					durationMs: Date.now() - startedAt,
+				};
+				try {
+					pi.sendUserMessage(invocation.input);
+				} catch (error) {
+					preparedEnrichment = undefined;
+					throw error;
+				}
 			} catch (error) {
-				pendingEnrichment = undefined;
-				throw error;
+				if (isWorkflowAbortError(error) || abortController.signal.aborted) {
+					return;
+				}
+				ctx.ui.setEditorText(invocation.input);
+				notifyCommandMessage(
+					pi,
+					ctx,
+					`Workflow "${workflow.name}" failed before sending the request: ${error instanceof Error ? error.message : String(error)}`,
+					"error",
+				);
+			} finally {
+				preflight.detachTerminalInput();
+				feedbackController.dispose();
+				if (activePreflight === preflight) {
+					activePreflight = undefined;
+				}
 			}
 		},
 	});

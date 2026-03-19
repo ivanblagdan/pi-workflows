@@ -1,3 +1,4 @@
+import { throwIfWorkflowAborted } from "./execution.js";
 import {
 	emitWorkflowFeedback,
 	getCurrentWorkflowFeedbackScopeId,
@@ -76,7 +77,11 @@ export abstract class WorkflowBase<TResult> {
 	protected async step<T>(label: string, run: () => Promise<T>): Promise<T>;
 	protected async step<T>(label: string, run: () => T): Promise<T>;
 	protected async step<T>(label: string, run: () => Promise<T> | T): Promise<T> {
-		return withWorkflowFeedbackScope("step", label, run);
+		throwIfWorkflowAborted();
+		return withWorkflowFeedbackScope("step", label, async () => {
+			throwIfWorkflowAborted();
+			return run();
+		});
 	}
 
 	protected update(message: string, progress?: WorkflowFeedbackProgress): void {
