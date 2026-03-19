@@ -5,6 +5,14 @@ export type {
 } from "../extension.js";
 export { registerWorkflowExtension } from "../extension.js";
 export {
+	bullets,
+	doc,
+	docList,
+	lines,
+	section,
+	type DocPart,
+} from "./document.js";
+export {
 	ARTIFACT_RESULT_SCHEMA,
 	type ArtifactResultPayload,
 	type ArtifactWorkflowOutput,

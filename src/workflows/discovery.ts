@@ -1,4 +1,5 @@
 import pLimit from "p-limit";
+import { bullets, doc, docList, lines, section } from "../lib/document.js";
 import type { WorkflowRegistration } from "../lib/registry.js";
 import type { InferWorkflowResult, WorkflowTurnEnrichment, WorkflowTurnEnrichmentContext } from "../lib/types.js";
 import { Workflow } from "../lib/workflow.js";
@@ -14,30 +15,21 @@ export class DiscroveryWorkflow extends Workflow<InferWorkflowResult<typeof Rese
 		context: WorkflowTurnEnrichmentContext<InferWorkflowResult<typeof ResearchReducerOutput>>,
 	): Promise<WorkflowTurnEnrichment> {
 		const baseEnrichment = await super.buildTurnEnrichment(context);
-		const openQuestions =
-			context.result.output.openQuestions.length > 0
-				? context.result.output.openQuestions.map((question) => `- ${question}`)
-				: ["- (none)"];
 
 		return {
 			...baseEnrichment,
 			message: {
 				customType: "workflow-context",
-				content: [
+				content: doc(
 					`[WORKFLOW CONTEXT: ${context.name}]`,
-					"",
-					"This is extension-generated preparatory context for the current user request.",
-					"It supplements the user's request and does not replace it.",
-					"",
-					"Observations:",
-					...context.result.output.observations.map((observation) => `- ${observation}`),
-					"",
-					"Open questions:",
-					...openQuestions,
-					"",
-					"References:",
-					...context.result.output.references.map((reference) => `- ${reference}`),
-				].join("\n"),
+					lines(
+						"This is extension-generated preparatory context for the current user request.",
+						"It supplements the user's request and does not replace it.",
+					),
+					section("Observations", bullets(context.result.output.observations)),
+					section("Open questions", bullets(context.result.output.openQuestions, { empty: "(none)" })),
+					section("References", bullets(context.result.output.references)),
+				),
 				display: true,
 				details: {
 					workflow: context.name,
@@ -65,11 +57,11 @@ export class DiscroveryWorkflow extends Workflow<InferWorkflowResult<typeof Rese
 			Promise.all(
 				topics.questions.map((question) =>
 					limit(async () => {
-						const task = [
-							"Task: \n" + question.task,
-							"Deliverable: \n" + question.deliverable,
-							"References: \n" + question.references.map((ref) => `- ${ref}`).join("\n"),
-						].join("\n\n");
+						const task = doc(
+							section("Task", question.task),
+							section("Deliverable", question.deliverable),
+							section("References", bullets(question.references)),
+						);
 
 						const answer = (await new ResearchAgent().run(task)).output;
 						completedQuestions++;
@@ -83,17 +75,16 @@ export class DiscroveryWorkflow extends Workflow<InferWorkflowResult<typeof Rese
 			),
 		);
 
-		const flatAnswers = answers
-			.map((answer) =>
-				[
-					"Research Result: \n" + answer.deliverable,
-					"Open Questions: \n" + answer.openQuestions.map((q) => `- ${q}`).join("\n"),
-					"References: \n" + answer.references.map((ref) => `- ${ref}`).join("\n"),
-				]
-					.join("\n\n")
-					.trim(),
-			)
-			.join("\n\n---\n\n");
+		const flatAnswers = docList(
+			answers,
+			(answer) =>
+				doc(
+					section("Research Result", answer.deliverable),
+					section("Open Questions", bullets(answer.openQuestions, { empty: "(none)" })),
+					section("References", bullets(answer.references)),
+				),
+			{ separator: "\n\n---\n\n" },
+		);
 
 		const result = await this.step("Reduce research findings", () => new ResearchReducerAgent().run(flatAnswers));
 		this.artifact("discovery-summary", result.output);

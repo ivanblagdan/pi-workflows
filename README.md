@@ -262,6 +262,29 @@ class ResearchWorkflow extends Workflow<InferWorkflowResult<typeof SummaryOutput
 }
 ```
 
+### Document helpers
+
+Use `doc(...)`, `lines(...)`, `section(...)`, `bullets(...)`, and `docList(...)` to turn typed workflow outputs into consistent plaintext blocks without repeating ad hoc `join("\n")` logic in each workflow.
+
+```ts
+import { bullets, doc, docList, section } from "@ivanblagdan/pi-workflows";
+
+const task = doc(
+  section("Task", question.task),
+  section("Deliverable", question.deliverable),
+  section("References", bullets(question.references)),
+);
+
+const combined = docList(answers, (answer) =>
+  doc(
+    section("Research Result", answer.deliverable),
+    section("Open Questions", bullets(answer.openQuestions, { empty: "(none)" })),
+    section("References", bullets(answer.references)),
+  ),
+  { separator: "\n\n---\n\n" },
+);
+```
+
 ### Feedback primitives
 
 Workflow feedback is separate from turn enrichment. Use `runWithWorkflowFeedback(...)` to capture structured workflow events, and use `step(...)`, `update(...)`, `note(...)`, and `artifact(...)` inside workflows or agents to emit semantic progress without wiring UI logic into the workflow itself. Workflow and agent runs emit lifecycle events automatically, and nested `WorkflowAgent` runs also emit tool execution scopes automatically.
