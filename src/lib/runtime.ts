@@ -27,6 +27,7 @@ interface WorkflowAgentRuntime {
 	cwd: string;
 	session: AgentSession;
 	prompt: (input: string) => Promise<void>;
+	waitForIdle: () => Promise<void>;
 }
 
 function safeStringify(value: unknown): string {
@@ -159,6 +160,7 @@ async function runWorkflowLoop<TResult>(options: {
 	let attempt = 1;
 	let retriesRemaining = options.retries;
 
+	await options.runtime.waitForIdle();
 	await options.runtime.prompt(options.input);
 
 	while (true) {
@@ -180,6 +182,7 @@ async function runWorkflowLoop<TResult>(options: {
 			});
 			retriesRemaining--;
 			attempt++;
+			await options.runtime.waitForIdle();
 			await options.runtime.prompt(buildRepairPrompt(validationError));
 		}
 	}
@@ -332,6 +335,9 @@ async function createWorkflowRuntime<TParams extends TSchema>(options: {
 		session,
 		prompt: async (input: string) => {
 			await session.prompt(input, { expandPromptTemplates: false });
+		},
+		waitForIdle: async () => {
+			await session.agent.waitForIdle();
 		},
 	};
 }
