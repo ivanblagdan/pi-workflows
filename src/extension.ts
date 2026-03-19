@@ -264,7 +264,7 @@ function registerWorkflowMessageRenderers(pi: ExtensionAPI): void {
 		const input = getWorkflowMessageInput(details) ?? getMessageTextContent(message.content);
 		const header = theme.fg("warning", "◌") + " " + theme.fg("accent", "workflow-preview") + " " + theme.bold(workflowName);
 		if (!expanded) {
-			return new Text(`${header}\n${theme.fg("dim", formatPreview(input, 120) || "Preparing workflow context...")}`, 0, 0);
+			return new Text(`${header}\n${theme.fg("dim", input || "Preparing workflow context...")}`, 0, 0);
 		}
 		const text = [
 			header,

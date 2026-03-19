@@ -2,6 +2,7 @@ import type { ExtensionUIContext } from "@mariozechner/pi-coding-agent";
 import type {
 	WorkflowFeedbackArtifactEvent,
 	WorkflowFeedbackEvent,
+	WorkflowFeedbackFinishEvent,
 	WorkflowFeedbackNoteEvent,
 	WorkflowFeedbackProgress,
 	WorkflowFeedbackSink,
@@ -10,6 +11,7 @@ import type {
 
 const WORKFLOW_FEEDBACK_STATUS_KEY = "workflow";
 const WORKFLOW_FEEDBACK_WIDGET_KEY = "workflow-feedback";
+const WORKFLOW_FEEDBACK_HISTORY_LIMIT = 6;
 
 interface WorkflowFeedbackScopeState {
 	id: string;
@@ -28,11 +30,18 @@ interface WorkflowFeedbackScopeState {
 	order: number;
 }
 
+interface WorkflowFeedbackHistoryEntry {
+	id: string;
+	timestamp: number;
+	text: string;
+}
+
 interface WorkflowFeedbackStore {
 	scopes: Map<string, WorkflowFeedbackScopeState>;
 	rootIds: string[];
 	latestNote?: WorkflowFeedbackNoteEvent;
 	latestArtifact?: WorkflowFeedbackArtifactEvent;
+	history: WorkflowFeedbackHistoryEntry[];
 	sequence: number;
 }
 
@@ -87,6 +96,50 @@ function getPrimaryRootScope(store: WorkflowFeedbackStore): WorkflowFeedbackScop
 	return undefined;
 }
 
+function pushHistoryEntry(store: WorkflowFeedbackStore, text: string, timestamp: number): void {
+	const normalized = text.trim();
+	if (normalized.length === 0) {
+		return;
+	}
+	const previous = store.history.at(-1);
+	if (previous?.text === normalized) {
+		previous.timestamp = timestamp;
+		return;
+	}
+	store.history.push({
+		id: `${timestamp}:${store.history.length}`,
+		timestamp,
+		text: normalized,
+	});
+	if (store.history.length > WORKFLOW_FEEDBACK_HISTORY_LIMIT) {
+		store.history.splice(0, store.history.length - WORKFLOW_FEEDBACK_HISTORY_LIMIT);
+	}
+}
+
+function buildFinishHistoryText(scope: WorkflowFeedbackScopeState, event: WorkflowFeedbackFinishEvent): string | undefined {
+	const duration = event.durationMs > 0 ? ` ${formatDuration(event.durationMs)}` : "";
+	if (event.status === "error") {
+		const detail = event.error ? ` — ${formatPreview(event.error, 140)}` : "";
+		return `✗ ${scope.label}${detail}`;
+	}
+
+	if (scope.kind === "tool") {
+		const summary = event.summary ? ` — ${formatPreview(event.summary, 160)}` : "";
+		return `✓ ${scope.label}${duration}${summary}`;
+	}
+	if (scope.kind === "step") {
+		const summary = event.summary ? ` — ${formatPreview(event.summary, 140)}` : "";
+		return `✓ ${scope.label}${duration}${summary}`;
+	}
+	if (scope.kind === "agent") {
+		return undefined;
+	}
+	if (scope.kind === "workflow") {
+		return undefined;
+	}
+	return undefined;
+}
+
 function buildStatusText(store: WorkflowFeedbackStore): string | undefined {
 	const root = getPrimaryRootScope(store);
 	if (!root) {
@@ -102,9 +155,7 @@ function buildStatusText(store: WorkflowFeedbackStore): string | undefined {
 		?? (runningAgents.length === 1 ? runningAgents[0].label : undefined)
 		?? (runningAgents.length > 1 ? `${runningAgents.length} agents active` : undefined)
 		?? root.latestMessage;
-	const progress = runningStep?.progress
-		?? getNewestRunningScope(store)?.progress
-		?? root.progress;
+	const progress = runningStep?.progress ?? getNewestRunningScope(store)?.progress ?? root.progress;
 
 	let text = `workflow: ${root.label}`;
 	if (focusLabel && focusLabel !== root.label) {
@@ -143,18 +194,15 @@ function buildWidgetLines(store: WorkflowFeedbackStore): string[] | undefined {
 	}
 
 	const runningTools = getRunningScopes(store, "tool");
-	if (runningTools.length === 1) {
-		lines.push(`Tool: ${runningTools[0].label}`);
-	} else if (runningTools.length > 1) {
+	if (runningTools.length > 0) {
 		lines.push(`Tools: ${runningTools.length} running`);
 	}
 
-	if (store.latestNote) {
-		lines.push(`Note: ${formatPreview(store.latestNote.message, 96)}`);
-	}
-
-	if (store.latestArtifact) {
-		lines.push(`Artifact: ${store.latestArtifact.label}`);
+	if (store.history.length > 0) {
+		lines.push("Recent:");
+		for (const entry of store.history) {
+			lines.push(`  ${entry.text}`);
+		}
 	}
 
 	if (root.status !== "running" && typeof root.durationMs === "number") {
@@ -208,14 +256,21 @@ function applyFeedbackEvent(store: WorkflowFeedbackStore, event: WorkflowFeedbac
 			scope.durationMs = event.durationMs;
 			scope.summary = event.summary;
 			scope.error = event.error;
+			const historyText = buildFinishHistoryText(scope, event);
+			if (historyText) {
+				pushHistoryEntry(store, historyText, event.timestamp);
+			}
 			return;
 		}
 		case "artifact": {
 			store.latestArtifact = event;
+			pushHistoryEntry(store, `⬢ Artifact: ${event.label}`, event.timestamp);
 			return;
 		}
 		case "note": {
 			store.latestNote = event;
+			const icon = event.level === "error" ? "✗" : event.level === "warning" ? "⚠" : "•";
+			pushHistoryEntry(store, `${icon} ${formatPreview(event.message, 160)}`, event.timestamp);
 			return;
 		}
 		default:
@@ -229,6 +284,7 @@ export function createWorkflowFeedbackController(options: {
 	const store: WorkflowFeedbackStore = {
 		scopes: new Map(),
 		rootIds: [],
+		history: [],
 		sequence: 0,
 	};
 

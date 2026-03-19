@@ -56,13 +56,13 @@ function formatToolArgsPreview(args: unknown): string | undefined {
 	}
 	if (typeof args === "string") {
 		const trimmed = args.trim();
-		return trimmed.length > 0 ? formatPreview(trimmed, 48) : undefined;
+		return trimmed.length > 0 ? formatPreview(trimmed, 100) : undefined;
 	}
 	if (typeof args === "number" || typeof args === "boolean") {
 		return String(args);
 	}
 	if (Array.isArray(args)) {
-		return formatPreview(safeStringify(args), 48);
+		return formatPreview(safeStringify(args), 100);
 	}
 	if (typeof args !== "object" || args === null) {
 		return undefined;
@@ -71,14 +71,14 @@ function formatToolArgsPreview(args: unknown): string | undefined {
 	for (const key of ["path", "command", "name", "label", "input"]) {
 		const value = record[key];
 		if (typeof value === "string" && value.trim().length > 0) {
-			return `${key}=${formatPreview(value, 40)}`;
+			return `${key}=${formatPreview(value, 88)}`;
 		}
 	}
 	const keys = Object.keys(record);
 	if (keys.length === 0) {
 		return undefined;
 	}
-	return formatPreview(safeStringify(record), 48);
+	return formatPreview(safeStringify(record), 120);
 }
 
 function formatToolLabel(toolName: string, args: unknown): string {
@@ -92,10 +92,10 @@ function summarizeToolResult(result: unknown): string | undefined {
 	}
 	if (typeof result === "string") {
 		const trimmed = result.trim();
-		return trimmed.length > 0 ? formatPreview(trimmed, 64) : undefined;
+		return trimmed.length > 0 ? formatPreview(trimmed, 160) : undefined;
 	}
 	if (typeof result !== "object") {
-		return formatPreview(String(result), 64);
+		return formatPreview(String(result), 160);
 	}
 	const record = result as Record<string, unknown>;
 	const textContent = Array.isArray(record.content)
@@ -111,12 +111,12 @@ function summarizeToolResult(result: unknown): string | undefined {
 				.join("\n")
 		: undefined;
 	if (textContent && textContent.trim().length > 0) {
-		return formatPreview(textContent, 64);
+		return formatPreview(textContent, 160);
 	}
 	if (typeof record.details === "string" && record.details.trim().length > 0) {
-		return formatPreview(record.details, 64);
+		return formatPreview(record.details, 160);
 	}
-	return formatPreview(safeStringify(record), 64);
+	return formatPreview(safeStringify(record), 160);
 }
 
 function extractLastAssistantResponse(messages: AgentMessage[]): string {
