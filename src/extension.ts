@@ -1,6 +1,8 @@
 import type { ExtensionAPI, ExtensionCommandContext, ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
+import { createWorkflowFeedbackController } from "./extension-feedback.js";
+import { runWithWorkflowFeedback } from "./lib/feedback.js";
 import type { WorkflowRegistry } from "./lib/registry.js";
 import type { WorkflowInvocation, WorkflowTurnEnrichment } from "./lib/types.js";
 import type { Workflow } from "./lib/workflow.js";
@@ -395,6 +397,9 @@ async function executeWorkflow(
 	if (instance.cwd === undefined) {
 		instance.cwd = cwd;
 	}
+	if (instance.feedbackLabel === undefined) {
+		instance.feedbackLabel = workflow.name;
+	}
 	const result = await instance.run(input);
 	return { instance, result };
 }
@@ -563,12 +568,14 @@ export function registerWorkflowExtension(pi: ExtensionAPI, registry: WorkflowRe
 			throw new Error(`Workflow disappeared before enrichment: ${invocation.name}`);
 		}
 
-		ctx.ui.setStatus("workflow", `workflow: ${workflow.name}`);
 		ctx.ui.setWorkingMessage(`Running workflow "${workflow.name}"...`);
 		const startedAt = Date.now();
+		const feedbackController = createWorkflowFeedbackController({ ui: ctx.ui });
 
 		try {
-			const { instance, result } = await executeWorkflow(workflow, invocation.input, ctx.cwd);
+			const { instance, result } = await runWithWorkflowFeedback(feedbackController.sink, () =>
+				executeWorkflow(workflow, invocation.input, ctx.cwd),
+			);
 			const enrichment = await instance.buildTurnEnrichment({
 				name: workflow.name,
 				input: invocation.input,
@@ -592,7 +599,7 @@ export function registerWorkflowExtension(pi: ExtensionAPI, registry: WorkflowRe
 			ctx.ui.notify(`Workflow "${workflow.name}" enrichment failed: ${errorMessage}`, "error");
 			throw error instanceof Error ? error : new Error(errorMessage);
 		} finally {
-			ctx.ui.setStatus("workflow", undefined);
+			feedbackController.dispose();
 			ctx.ui.setWorkingMessage();
 		}
 	});

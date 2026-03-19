@@ -8,6 +8,7 @@ import {
 	type ToolDefinition,
 } from "@mariozechner/pi-coding-agent";
 import type { Static, TObject, TSchema } from "@sinclair/typebox";
+import { emitWorkflowFeedback, getCurrentWorkflowFeedbackScopeId } from "./feedback.js";
 import { type ArtifactWorkflowOutput, isJsonWorkflowOutput, type JsonWorkflowOutput } from "./outputs.js";
 import { createWorkflowRuntimeEnvironment } from "./environment.js";
 import type { InferWorkflowResult, WorkflowAgentRuntimeConfig, WorkflowValidationContext } from "./types.js";
@@ -17,10 +18,104 @@ interface WorkflowLoopState {
 	lastResponse: string;
 }
 
+interface ToolExecutionState {
+	scopeId: string;
+	startedAt: number;
+}
+
 interface WorkflowAgentRuntime {
 	cwd: string;
 	session: AgentSession;
 	prompt: (input: string) => Promise<void>;
+}
+
+function safeStringify(value: unknown): string {
+	if (typeof value === "string") {
+		return value;
+	}
+	try {
+		const serialized = JSON.stringify(value);
+		return serialized ?? String(value);
+	} catch {
+		return String(value);
+	}
+}
+
+function formatPreview(text: string, maxLength: number): string {
+	const normalized = text.replace(/\s+/g, " ").trim();
+	if (normalized.length <= maxLength) {
+		return normalized;
+	}
+	return `${normalized.slice(0, Math.max(0, maxLength - 3))}...`;
+}
+
+function formatToolArgsPreview(args: unknown): string | undefined {
+	if (args === undefined) {
+		return undefined;
+	}
+	if (typeof args === "string") {
+		const trimmed = args.trim();
+		return trimmed.length > 0 ? formatPreview(trimmed, 48) : undefined;
+	}
+	if (typeof args === "number" || typeof args === "boolean") {
+		return String(args);
+	}
+	if (Array.isArray(args)) {
+		return formatPreview(safeStringify(args), 48);
+	}
+	if (typeof args !== "object" || args === null) {
+		return undefined;
+	}
+	const record = args as Record<string, unknown>;
+	for (const key of ["path", "command", "name", "label", "input"]) {
+		const value = record[key];
+		if (typeof value === "string" && value.trim().length > 0) {
+			return `${key}=${formatPreview(value, 40)}`;
+		}
+	}
+	const keys = Object.keys(record);
+	if (keys.length === 0) {
+		return undefined;
+	}
+	return formatPreview(safeStringify(record), 48);
+}
+
+function formatToolLabel(toolName: string, args: unknown): string {
+	const preview = formatToolArgsPreview(args);
+	return preview ? `${toolName} ${preview}` : toolName;
+}
+
+function summarizeToolResult(result: unknown): string | undefined {
+	if (result === undefined || result === null) {
+		return undefined;
+	}
+	if (typeof result === "string") {
+		const trimmed = result.trim();
+		return trimmed.length > 0 ? formatPreview(trimmed, 64) : undefined;
+	}
+	if (typeof result !== "object") {
+		return formatPreview(String(result), 64);
+	}
+	const record = result as Record<string, unknown>;
+	const textContent = Array.isArray(record.content)
+		? record.content
+				.map((item) => {
+					if (typeof item !== "object" || item === null) {
+						return "";
+					}
+					const contentItem = item as { type?: unknown; text?: unknown };
+					return contentItem.type === "text" && typeof contentItem.text === "string" ? contentItem.text : "";
+				})
+				.filter((text) => text.length > 0)
+				.join("\n")
+		: undefined;
+	if (textContent && textContent.trim().length > 0) {
+		return formatPreview(textContent, 64);
+	}
+	if (typeof record.details === "string" && record.details.trim().length > 0) {
+		return formatPreview(record.details, 64);
+	}
+	return formatPreview(safeStringify(record), 64);
 }
 
 function extractLastAssistantResponse(messages: AgentMessage[]): string {
@@ -76,6 +171,13 @@ async function runWorkflowLoop<TResult>(options: {
 				throw validationError;
 			}
 
+			emitWorkflowFeedback({
+				type: "note",
+				scopeId: getCurrentWorkflowFeedbackScopeId(),
+				level: "warning",
+				message: `Validation failed for attempt ${attempt}: ${validationError.message}. Retrying (${retriesRemaining} ${retriesRemaining === 1 ? "retry" : "retries"} remaining).`,
+				timestamp: Date.now(),
+			});
 			retriesRemaining--;
 			attempt++;
 			await options.runtime.prompt(buildRepairPrompt(validationError));
@@ -83,10 +185,54 @@ async function runWorkflowLoop<TResult>(options: {
 	}
 }
 
-function subscribeToWorkflowState(session: AgentSession, state: WorkflowLoopState): () => void {
+function subscribeToWorkflowState(
+	session: AgentSession,
+	state: WorkflowLoopState,
+	parentScopeId: string | undefined,
+): () => void {
+	const toolExecutions = new Map<string, ToolExecutionState>();
+
 	return session.agent.subscribe((event) => {
 		if (event.type === "agent_end") {
 			state.lastResponse = extractLastAssistantResponse(event.messages);
+			return;
+		}
+
+		if (!parentScopeId) {
+			return;
+		}
+
+		if (event.type === "tool_execution_start") {
+			const scopeId = `tool:${event.toolCallId}`;
+			toolExecutions.set(event.toolCallId, {
+				scopeId,
+				startedAt: Date.now(),
+			});
+			emitWorkflowFeedback({
+				type: "start",
+				scope: {
+					id: scopeId,
+					parentId: parentScopeId,
+					kind: "tool",
+					label: formatToolLabel(event.toolName, event.args),
+				},
+				timestamp: Date.now(),
+			});
+			return;
+		}
+
+		if (event.type === "tool_execution_end") {
+			const execution = toolExecutions.get(event.toolCallId);
+			toolExecutions.delete(event.toolCallId);
+			emitWorkflowFeedback({
+				type: "finish",
+				scopeId: execution?.scopeId ?? `tool:${event.toolCallId}`,
+				status: event.isError ? "error" : "success",
+				durationMs: execution ? Date.now() - execution.startedAt : 0,
+				summary: summarizeToolResult(event.result),
+				error: event.isError ? summarizeToolResult(event.result) : undefined,
+				timestamp: Date.now(),
+			});
 		}
 	});
 }
@@ -212,7 +358,7 @@ async function runJsonWorkflowAgent<TSchema extends TObject>(
 		environment: agent.environment,
 	});
 	const state: WorkflowLoopState = { lastResponse: "" };
-	const unsubscribe = subscribeToWorkflowState(runtime.session, state);
+	const unsubscribe = subscribeToWorkflowState(runtime.session, state, getCurrentWorkflowFeedbackScopeId());
 
 	try {
 		return await runWorkflowLoop({
@@ -262,7 +408,7 @@ async function runArtifactWorkflowAgent(
 		environment: agent.environment,
 	});
 	const state: WorkflowLoopState = { lastResponse: "" };
-	const unsubscribe = subscribeToWorkflowState(runtime.session, state);
+	const unsubscribe = subscribeToWorkflowState(runtime.session, state, getCurrentWorkflowFeedbackScopeId());
 
 	try {
 		return await runWorkflowLoop({

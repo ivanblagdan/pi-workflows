@@ -55,19 +55,31 @@ export class DiscroveryWorkflow extends Workflow<InferWorkflowResult<typeof Rese
 	}
 
 	protected async runWorkflow(input: string): Promise<InferWorkflowResult<typeof ResearchReducerOutput>> {
-		const topics = (await new DiscoveryAgent().run(input)).output;
+		const topics = (
+			await this.step("Generate research questions", () => new DiscoveryAgent().run(input))
+		).output;
 		const limit = pLimit(DISCOVERY_RESEARCH_CONCURRENCY);
-		const answers = await Promise.all(
-			topics.questions.map((question) =>
-				limit(async () => {
-					const task = [
-						"Task: \n" + question.task,
-						"Deliverable: \n" + question.deliverable,
-						"References: \n" + question.references.map((ref) => `- ${ref}`).join("\n"),
-					].join("\n\n");
+		const totalQuestions = topics.questions.length;
+		let completedQuestions = 0;
+		const answers = await this.step(`Research ${totalQuestions} questions`, () =>
+			Promise.all(
+				topics.questions.map((question) =>
+					limit(async () => {
+						const task = [
+							"Task: \n" + question.task,
+							"Deliverable: \n" + question.deliverable,
+							"References: \n" + question.references.map((ref) => `- ${ref}`).join("\n"),
+						].join("\n\n");
 
-					return (await new ResearchAgent().run(task)).output;
-				}),
+						const answer = (await new ResearchAgent().run(task)).output;
+						completedQuestions++;
+						this.update("Research in progress", {
+							completed: completedQuestions,
+							total: totalQuestions,
+						});
+						return answer;
+					}),
+				),
 			),
 		);
 
@@ -83,7 +95,9 @@ export class DiscroveryWorkflow extends Workflow<InferWorkflowResult<typeof Rese
 			)
 			.join("\n\n---\n\n");
 
-		return new ResearchReducerAgent().run(flatAnswers);
+		const result = await this.step("Reduce research findings", () => new ResearchReducerAgent().run(flatAnswers));
+		this.artifact("discovery-summary", result.output);
+		return result;
 	}
 }
 

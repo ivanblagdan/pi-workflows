@@ -1,3 +1,4 @@
+import { withWorkflowFeedbackScope } from "./feedback.js";
 import type { WorkflowInvoker, WorkflowTurnEnrichment, WorkflowTurnEnrichmentContext } from "./types.js";
 import { WorkflowBase } from "./workflow-base.js";
 
@@ -96,23 +97,29 @@ export abstract class Workflow<TResult> extends WorkflowBase<TResult> {
 	protected abstract runWorkflow(input: string): Promise<TResult>;
 
 	async run(input: string): Promise<TResult> {
-		let attempt = 1;
-		let retriesRemaining = this.retries;
+		return withWorkflowFeedbackScope("workflow", this.getFeedbackLabel(), async () => {
+			let attempt = 1;
+			let retriesRemaining = this.retries;
 
-		while (true) {
-			try {
-				const result = await this.runWorkflow(input);
-				await this.validateResult(result, input, attempt, retriesRemaining);
-				return result;
-			} catch (error) {
-				const workflowError = this.normalizeValidationError(error, attempt);
-				if (retriesRemaining <= 0) {
-					throw workflowError;
+			while (true) {
+				try {
+					const result = await this.runWorkflow(input);
+					await this.validateResult(result, input, attempt, retriesRemaining);
+					return result;
+				} catch (error) {
+					const workflowError = this.normalizeValidationError(error, attempt);
+					if (retriesRemaining <= 0) {
+						throw workflowError;
+					}
+
+					this.note(
+						`Attempt ${attempt} failed: ${workflowError.message}. Retrying (${retriesRemaining} ${retriesRemaining === 1 ? "retry" : "retries"} remaining).`,
+						"warning",
+					);
+					retriesRemaining--;
+					attempt++;
 				}
-
-				retriesRemaining--;
-				attempt++;
 			}
-		}
+		});
 	}
 }

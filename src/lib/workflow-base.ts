@@ -1,3 +1,10 @@
+import {
+	emitWorkflowFeedback,
+	getCurrentWorkflowFeedbackScopeId,
+	type WorkflowFeedbackNoteLevel,
+	type WorkflowFeedbackProgress,
+	withWorkflowFeedbackScope,
+} from "./feedback.js";
 import { WorkflowValidationError } from "./errors.js";
 import type { WorkflowValidationContext, WorkflowValidator } from "./types.js";
 
@@ -34,6 +41,7 @@ export function normalizeWorkflowValidationError(
 export abstract class WorkflowBase<TResult> {
 	cwd?: string;
 	retries = 1;
+	feedbackLabel?: string;
 
 	private readonly validators: Array<WorkflowValidator<TResult>> = [];
 
@@ -52,6 +60,57 @@ export abstract class WorkflowBase<TResult> {
 
 	getValidators(): readonly WorkflowValidator<TResult>[] {
 		return this.validators;
+	}
+
+	protected getFeedbackLabel(): string {
+		if (typeof this.feedbackLabel === "string") {
+			const trimmed = this.feedbackLabel.trim();
+			if (trimmed.length > 0) {
+				return trimmed;
+			}
+		}
+		const constructorName = this.constructor?.name?.trim();
+		return constructorName && constructorName.length > 0 ? constructorName : "workflow";
+	}
+
+	protected async step<T>(label: string, run: () => Promise<T>): Promise<T>;
+	protected async step<T>(label: string, run: () => T): Promise<T>;
+	protected async step<T>(label: string, run: () => Promise<T> | T): Promise<T> {
+		return withWorkflowFeedbackScope("step", label, run);
+	}
+
+	protected update(message: string, progress?: WorkflowFeedbackProgress): void {
+		const scopeId = getCurrentWorkflowFeedbackScopeId();
+		if (!scopeId) {
+			return;
+		}
+		emitWorkflowFeedback({
+			type: "update",
+			scopeId,
+			message,
+			progress,
+			timestamp: Date.now(),
+		});
+	}
+
+	protected note(message: string, level: WorkflowFeedbackNoteLevel = "info"): void {
+		emitWorkflowFeedback({
+			type: "note",
+			scopeId: getCurrentWorkflowFeedbackScopeId(),
+			level,
+			message,
+			timestamp: Date.now(),
+		});
+	}
+
+	protected artifact(label: string, value: unknown): void {
+		emitWorkflowFeedback({
+			type: "artifact",
+			scopeId: getCurrentWorkflowFeedbackScopeId(),
+			label,
+			value,
+			timestamp: Date.now(),
+		});
 	}
 
 	protected async validateResult(

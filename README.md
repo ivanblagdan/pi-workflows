@@ -216,7 +216,7 @@ const summary = await new SummaryAgent().run(
 
 Use `Workflow` to package that composition into a reusable higher-level workflow.
 
-`Workflow` also exposes `buildTurnEnrichment(...)`, which the `/workflow` command uses to turn a workflow result into an extension-generated custom message and optional per-turn system prompt adjustment. Override it when a workflow needs custom enrichment formatting; otherwise the default implementation injects a generic hidden `workflow-context` message.
+`Workflow` also exposes `buildTurnEnrichment(...)`, which the `/workflow` command uses to turn a workflow result into an extension-generated custom message and optional per-turn system prompt adjustment. Override it when a workflow needs custom enrichment formatting; otherwise the default implementation injects a generic `workflow-context` message.
 
 ```ts
 import pLimit from "p-limit";
@@ -258,6 +258,44 @@ class ResearchWorkflow extends Workflow<InferWorkflowResult<typeof SummaryOutput
         answers: answers.map((answer) => answer.output),
       }),
     );
+  }
+}
+```
+
+### Feedback primitives
+
+Workflow feedback is separate from turn enrichment. Use `runWithWorkflowFeedback(...)` to capture structured workflow events, and use `step(...)`, `update(...)`, `note(...)`, and `artifact(...)` inside workflows or agents to emit semantic progress without wiring UI logic into the workflow itself. Workflow and agent runs emit lifecycle events automatically, and nested `WorkflowAgent` runs also emit tool execution scopes automatically.
+
+```ts
+import {
+  Workflow,
+  WorkflowFeedbackSink,
+  runWithWorkflowFeedback,
+} from "@ivanblagdan/pi-workflows";
+
+const sink: WorkflowFeedbackSink = {
+  emit(event) {
+    console.log(event.type, event);
+  },
+};
+
+await runWithWorkflowFeedback(sink, () =>
+  new ResearchWorkflow().run("Investigate the auth refactor"),
+);
+```
+
+```ts
+class ResearchWorkflow extends Workflow<InferWorkflowResult<typeof SummaryOutput>> {
+  protected async runWorkflow(input: string) {
+    const context = await this.step("Derive research questions", () =>
+      new ContextAgent().run(input),
+    );
+
+    this.note("Research fan-out started.");
+    this.update("Research in progress", { completed: 1, total: 3 });
+    this.artifact("questions", context.output.questions);
+
+    return new SummaryAgent().run(input);
   }
 }
 ```

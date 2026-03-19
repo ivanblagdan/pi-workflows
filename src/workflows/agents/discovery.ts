@@ -19,6 +19,7 @@ export const DiscroveryOutput = jsonOutput(
 );
 
 export class DiscoveryAgent extends WorkflowAgent<typeof DiscroveryOutput> {
+	feedbackLabel = "question discovery";
 	model = getModel("openai-codex", "gpt-5.4");
 	thinkingLevel = "xhigh" as const;
 	instructions = (input: string) =>

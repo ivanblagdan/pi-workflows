@@ -16,6 +16,7 @@ export const ResearchReducerOutput = jsonOutput(
 );
 
 export class ResearchReducerAgent extends WorkflowAgent<typeof ResearchReducerOutput> {
+	feedbackLabel = "research reduction";
 	model = getModel("openai-codex", "gpt-5.4");
 	thinkingLevel = "medium" as const;
 	instructions = (input: string) =>

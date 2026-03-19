@@ -14,6 +14,24 @@ export {
 	jsonOutput,
 	type WorkflowOutput,
 } from "./outputs.js";
+export {
+	emitWorkflowFeedback,
+	getCurrentWorkflowFeedbackScopeId,
+	runWithWorkflowFeedback,
+	type WorkflowFeedbackArtifactEvent,
+	type WorkflowFeedbackEvent,
+	type WorkflowFeedbackFinishEvent,
+	type WorkflowFeedbackNoteEvent,
+	type WorkflowFeedbackNoteLevel,
+	type WorkflowFeedbackProgress,
+	type WorkflowFeedbackScope,
+	type WorkflowFeedbackScopeKind,
+	type WorkflowFeedbackSink,
+	type WorkflowFeedbackStartEvent,
+	type WorkflowFeedbackStatus,
+	type WorkflowFeedbackUpdateEvent,
+	withWorkflowFeedbackScope,
+} from "./feedback.js";
 export { WorkflowValidationError } from "./errors.js";
 export type { WorkflowRegistration } from "./registry.js";
 export { WorkflowRegistry } from "./registry.js";
