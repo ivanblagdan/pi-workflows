@@ -287,14 +287,12 @@ const combined = docList(answers, (answer) =>
 
 ### Feedback primitives
 
-Workflow feedback is separate from turn enrichment. Use `runWithWorkflowExecution(...)` to propagate cancellation and `runWithWorkflowFeedback(...)` to capture structured workflow events. Then use `step(...)`, `update(...)`, `note(...)`, and `artifact(...)` inside workflows or agents to emit semantic progress without wiring UI logic into the workflow itself. Workflow and agent runs emit lifecycle events automatically, and nested `WorkflowAgent` runs also emit tool execution scopes automatically.
+Workflow feedback is separate from turn enrichment. Use `runWithWorkflowFeedback(...)` to capture structured workflow events, then use `step(...)`, `update(...)`, `note(...)`, and `artifact(...)` inside workflows or agents to emit semantic progress without wiring UI logic into the workflow itself. Workflow and agent runs emit lifecycle events automatically, and nested `WorkflowAgent` runs also emit tool execution scopes automatically. Host integrations can optionally use `runWithWorkflowExecution(...)` to propagate cancellation, but workflow authors do not need to wire `AbortController` into normal workflow implementations. When a host provides execution cancellation, it propagates through the built-in workflow primitives by default (`Workflow.run(...)`, `WorkflowAgent.run(...)`, `step(...)`, and nested workflow-agent runtime boundaries). Custom long-running code outside those primitives may still need explicit abort checks or signal propagation.
 
 ```ts
 import {
   Workflow,
-  WorkflowAbortError,
   WorkflowFeedbackSink,
-  runWithWorkflowExecution,
   runWithWorkflowFeedback,
 } from "@ivanblagdan/pi-workflows";
 
@@ -304,21 +302,9 @@ const sink: WorkflowFeedbackSink = {
   },
 };
 
-const controller = new AbortController();
-
-try {
-  await runWithWorkflowExecution({ signal: controller.signal }, () =>
-    runWithWorkflowFeedback(sink, () =>
-      new ResearchWorkflow().run("Investigate the auth refactor"),
-    ),
-  );
-} catch (error) {
-  if (error instanceof WorkflowAbortError) {
-    console.log("Workflow canceled");
-  } else {
-    throw error;
-  }
-}
+await runWithWorkflowFeedback(sink, () =>
+  new ResearchWorkflow().run("Investigate the auth refactor"),
+);
 ```
 
 ```ts
