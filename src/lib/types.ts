@@ -1,5 +1,5 @@
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
-import type { Model } from "@mariozechner/pi-ai";
+import type { ImageContent, Model, TextContent } from "@mariozechner/pi-ai";
 import type { CreateAgentSessionOptions, ExtensionFactory } from "@mariozechner/pi-coding-agent";
 import type { Static } from "@sinclair/typebox";
 import type { ArtifactWorkflowOutput, JsonWorkflowOutput, WorkflowOutput } from "./outputs.js";
@@ -72,7 +72,28 @@ export interface WorkflowInvocation {
 	input: string;
 }
 
+/** @deprecated The /workflow command now runs workflows as one-shot turn enrichments. */
 export type WorkflowInvoker = (invocation: WorkflowInvocation) => string;
+
+export interface WorkflowTurnEnrichmentMessage {
+	customType: string;
+	content: string | Array<TextContent | ImageContent>;
+	display?: boolean;
+	details?: unknown;
+}
+
+export interface WorkflowTurnEnrichment {
+	message?: WorkflowTurnEnrichmentMessage;
+	systemPrompt?: string;
+}
+
+export interface WorkflowTurnEnrichmentContext<TResult = unknown> {
+	name: string;
+	input: string;
+	result: TResult;
+	cwd: string;
+	currentSystemPrompt: string;
+}
 
 export type JsonWorkflowResult<TOutput> = {
 	output: TOutput;

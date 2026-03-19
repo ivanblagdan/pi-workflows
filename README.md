@@ -1,12 +1,12 @@
 # @ivanblagdan/pi-workflows
 
-Typed workflow primitives for pi, plus a loadable pi extension that exposes registered workflows through a `workflow` tool and `/workflow` command.
+Typed workflow primitives for pi, plus a loadable pi extension that exposes registered workflows through a `workflow` tool and a one-shot `/workflow` enrichment command.
 
 ## What this package is
 
 `@ivanblagdan/pi-workflows` has two roles:
 
-- **Pi extension**: install or load it in pi to get a `workflow` tool, `/workflow` command, autocomplete, selection UI, and built-in workflows.
+- **Pi extension**: install or load it in pi to get a `workflow` tool, one-shot `/workflow` turn enrichment, autocomplete, selection UI, and built-in workflows.
 - **TypeScript library**: import `WorkflowAgent`, `Workflow`, output helpers, and registry helpers to build your own workflows.
 
 ## Installation
@@ -40,34 +40,28 @@ When loaded, it registers:
 - workflow-name autocomplete for `/workflow`
 - workflow selection UI when `/workflow` is run without a name
 
-The command does not run the workflow directly. Instead, it creates the workflow, calls its `invoke({ name, input })` callback, and sends the returned string as a user message. The default `Workflow.invoke(...)` tells the main agent to call the `workflow` tool with exact `{ name, input }` parameters. That means the workflow result is returned to the main agent as tool context.
+The `/workflow` command is a one-shot enrichment command. It preserves the user's original request, then runs the selected workflow during `before_agent_start` and injects the workflow's `buildTurnEnrichment(...)` output as extension-provided context before the main agent responds.
 
 Example:
 
 ```text
-/workflow plan refactor auth
+/workflow discovery refactor auth flow to support SSO
 ```
 
 ## Built-in workflows
 
-### `plan`
+### `discovery`
 
 The package currently ships with one built-in workflow:
 
-- **plan** — create a read-only implementation plan for the current project
+- **discovery** — gather codebase context relevant to the current task
 
-The built-in `plan` workflow uses a single `WorkflowAgent` with read-only tools:
-
-- `read`
-- `bash`
-- `grep`
-- `find`
-- `ls`
+The built-in `discovery` workflow decomposes the task into research questions, runs bounded parallel read-only research, and injects concise observations, open questions, and references into the next turn.
 
 Example:
 
 ```text
-/workflow plan add a workflow command for release notes
+/workflow discovery add a workflow command for release notes
 ```
 
 ## Registering workflows in your own extension
@@ -82,7 +76,6 @@ import {
   WorkflowRegistry,
   registerWorkflowExtension,
   type InferWorkflowResult,
-  type WorkflowInvoker,
   jsonOutput,
 } from "@ivanblagdan/pi-workflows";
 import { Type } from "@sinclair/typebox";
@@ -102,16 +95,6 @@ class PlanAgent extends WorkflowAgent<typeof PlanOutput> {
 }
 
 class PlanWorkflow extends Workflow<InferWorkflowResult<typeof PlanOutput>> {
-  invoke: WorkflowInvoker = ({ name, input }) =>
-    [
-      `Call the workflow tool exactly once for "${name}".`,
-      "",
-      "Use these exact parameters:",
-      "```json",
-      JSON.stringify({ name, input }, null, 2),
-      "```",
-    ].join("\n");
-
   protected async runWorkflow(input: string) {
     return new PlanAgent().run(input);
   }
@@ -233,7 +216,7 @@ const summary = await new SummaryAgent().run(
 
 Use `Workflow` to package that composition into a reusable higher-level workflow.
 
-`Workflow` also exposes an `invoke({ name, input }) => string` callback used by the `/workflow` command. Override it when a workflow needs a custom command-time invocation prompt. The `WorkflowInvocation` and `WorkflowInvoker` types are exported for reuse.
+`Workflow` also exposes `buildTurnEnrichment(...)`, which the `/workflow` command uses to turn a workflow result into an extension-generated custom message and optional per-turn system prompt adjustment. Override it when a workflow needs custom enrichment formatting; otherwise the default implementation injects a generic hidden `workflow-context` message.
 
 ```ts
 import pLimit from "p-limit";

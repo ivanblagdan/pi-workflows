@@ -27,6 +27,9 @@ export type {
 	WorkflowEnvironment,
 	WorkflowInvocation,
 	WorkflowInvoker,
+	WorkflowTurnEnrichment,
+	WorkflowTurnEnrichmentContext,
+	WorkflowTurnEnrichmentMessage,
 	WorkflowValidationContext,
 	WorkflowValidator,
 } from "./types.js";
